@@ -2,7 +2,13 @@ die () { lastmsg=$*; exit 1; }
 lastmsg () { echo "$lastmsg" >&2; }
 trap lastmsg exit
 
-W=${W-9} H=${H-9} BOMBS=${BOMBS-10}
+case ${DIFFICULTY-easy} in
+    easy)   W=9  H=9  BOMBS=10 ;;
+    medium) W=16 H=16 BOMBS=40 ;;
+    hard)   W=30 H=16 BOMBS=99 ;;
+    custom) (( W && H && BOMBS )) || die 'need $W $H $BOMBS for custom' ;;
+    *) die unknown difficulty
+esac
 (( (size = W*H) < 2**15 )) || die board too big
 (( BOMBS < size )) || die too many bombs
 
@@ -94,7 +100,7 @@ getinput() {
             now=${EPOCHREALTIME/.}
             printf -v time ' %s' "$(((now-start)/1000000+1))"
         fi
-        (( start )) && printf '%s\e[%sD' "$time" "${#time}"
+        (( start )) && printf '\r\e[2C%s' "$time"
 
         while read -rn1 -t.1; do
             input+=$REPLY
@@ -136,7 +142,7 @@ while draw; getinput; do
         continue
     fi
     [[ $face == ':)' ]] || continue
-    (( I*W+J < size )) || continue
+    (( I < H && J < W )) || continue
 
     (( !boardgen++ )) && fillboard "$I" "$J"
 
