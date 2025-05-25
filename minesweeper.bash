@@ -44,6 +44,7 @@ fillboard () {
             board[i*W+j]=$value
         done
     done
+    start=${EPOCHREALTIME/.}
 }
 
 colours=([1]=27 [2]=28 [3]=160 [4]=20 [5]=88 [6]=38 [7]=232 [8]=240)
@@ -68,7 +69,7 @@ draw () {
         done
         printf '\n'
     done
-    printf '\e[48;5;220;38;5;232m%s\e[m' "$face"
+    printf '\e[48;5;220;38;5;232m%s\e[m\e[K' "$face"
 }
 
 
@@ -83,23 +84,31 @@ LANG=C
 shopt -s extglob
 stty -echo
 
-mouseregex=$'\e\[<([0-9]+);([0-9]+);([0-9]+)([mM])'
+mouseregex='([0-9]+);([0-9]+);([0-9]+)([mM])'
+start=0
 getinput() {
-    while read -rn1; do
-        __input+=$REPLY
-        case $__input in
-            $'\3'*) exit ;; # ^C
-            $'\e[<'+([0-9;])[mM])
-                [[ $__input =~ $mouseregex ]]
-                BUTTON=("${BASH_REMATCH[@]:1:4}")
-                __input=
-                break 2
-                ;;
-            # csi/ss3 arrows | non csi escape | weird csi
-            $'\e'[[O][ABCD]  | $'\e'[^[]      | $'\e['*([0-?])*([ -/])[@-~]) __input=;;
-            $'\e'*) ;; # incomplete csi
-            *) __input= ;; # weird keyboard input?
-        esac
+    local input
+    while :; do
+        if (( start > 0 )); then
+            now=${EPOCHREALTIME/.}
+            printf -v time ' %s' "$(((now-start)/1000000+1))"
+        fi
+        (( start )) && printf '%s\e[%sD' "$time" "${#time}"
+
+        while read -rn1 -t.1; do
+            input+=$REPLY
+            case $input in
+                $'\e[<'+([0-9;])[mM])
+                    [[ $input =~ $mouseregex ]]
+                    BUTTON=("${BASH_REMATCH[@]:1}")
+                    return
+                    ;;
+                # csi/ss3 arrows | non csi escape | weird csi
+                $'\e'[[O][ABCD]  | $'\e'[^[]      | $'\e['*([0-?])*([ -/])[@-~]) input= ;;
+                $'\e'*) ;; # incomplete csi
+                *) input= ;; # weird keyboard input?
+            esac
+        done
     done
 }
 
@@ -125,6 +134,7 @@ while draw; getinput; do
         face=':)'
         board=()
         boardgen=0
+        start=0
         continue
     fi
     [[ $face == ':)' ]] || continue
@@ -132,32 +142,28 @@ while draw; getinput; do
 
     (( !boardgen++ )) && fillboard "$I" "$J"
 
-    (( BUTTON == 2 && (board[I*W+J] ^= 64) ))
-    if (( BUTTON == 0 && (board[I*W+J] & (32|0xf)) == 0 )); then
-        openzeros "$I" "$J"
-    fi
+    (( BUTTON == 2 && (board[I*W+J] ^= 64) )) # right click to add flag
+
+    (( BUTTON == 0 && (board[I*W+J] & (32|0xf)) == 0 )) && openzeros "$I" "$J"
 
     (( BUTTON == 0 && (board[I*W+J] |= 32) ))
+
     if (( (board[I*W+J] & (32|0xf)) == (32|10) )); then # you just uncovered a bomb
         face=':('
+        start=-1
         for (( i = 0; i < W*H; i++ )) do
             (( board[i] & 0xf == 10 && (board[i] |= 32) ))
         done
     fi
 
-    #set -x
     # check if any non bombs are left
     for (( i = 0; i < W*H; i++ )) do
-        : i=$i "${board[i]}"
         (( (board[i] & 0xf) == 10 )) && continue
-        (( board[i] & 32 )) || {
-            set +x
-            continue 2
-        }
+        (( board[i] & 32 )) || continue 2
     done
-    set +x
-    for (( i = 0; i < W*H; i++ )) do
+    for (( i = 0; i < W*H; i++ )) do # flag all bombs
         (( (board[i] & 0xf) == 10 )) && (( board[i] |= 64 ))
     done
     face='8)'
+    start=-1
 done
