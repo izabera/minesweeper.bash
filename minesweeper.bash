@@ -4,6 +4,7 @@ trap lastmsg exit
 
 W=${W-9} H=${H-9} BOMBS=${BOMBS-10}
 (( (size = W*H) < 2**15 )) || die board too big
+(( BOMBS < size )) || die too many bombs
 
 # x  |32  uncovered
 # x  |64  flag
@@ -32,7 +33,7 @@ fillboard () {
     local I=$1 J=$2 i j
     board=()
     for (( i = 0; i < BOMBS; )) do
-        (((r = RANDOM % size) != I*W+J)) && ((board[r]=10,i++))
+        (( (r = RANDOM % size) != I*W+J && !board[r] )) && (( board[r]=10, i++ ))
     done
 
     addvalue () (( value += board[$1*W+$2] == 10 ))
@@ -114,12 +115,9 @@ getinput() {
 
 
 
-printf -v line '%*s' "$W"
-line='|'${line// /%2s|}$'\n'
-
 addqueue () { queue+=("$1" "$2"); }
 openzeros() {
-    local I J i j queue=("$1" "$2")
+    local i j queue=("$1" "$2")
     while (( ${#queue[@]} )); do
         i=${queue[0]} j=${queue[1]} queue=("${queue[@]:2}")
         (( (${board[i*W+j]} & (32|0xf)) == 0 )) && surrounding "$i" "$j" addqueue
@@ -142,7 +140,7 @@ while draw; getinput; do
 
     (( !boardgen++ )) && fillboard "$I" "$J"
 
-    (( BUTTON == 2 && (board[I*W+J] ^= 64) )) # right click to add flag
+    (( BUTTON == 2 && (board[I*W+J] ^= 64) )) # right click to toggle flag
 
     (( BUTTON == 0 && (board[I*W+J] & (32|0xf)) == 0 )) && openzeros "$I" "$J"
 
